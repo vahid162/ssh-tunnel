@@ -205,6 +205,10 @@ remote_exec() {
     "${USER}@${HOST}" "$@"
 }
 
+remote_var() {
+  printf "%q" "$1"
+}
+
 main() {
   wait_tun || { echo "tun${TUN_ID} بالا نیامد."; exit 1; }
 
@@ -215,16 +219,9 @@ main() {
   ensure_sysctl
 
   # Remote setup: assign IP + MTU + (optional) ip_forward + (optional) allow INPUT on tun
-  remote_exec "bash -s" <<'RS'
+  remote_exec \
+    "TUN_ID=$(remote_var "$TUN_ID") IP_REMOTE=$(remote_var "$IP_REMOTE") MASK=$(remote_var "$MASK") MTU=$(remote_var "$MTU") TCP_PORTS_STR=$(remote_var "$TCP_PORTS") UDP_PORTS_STR=$(remote_var "$UDP_PORTS") REMOTE_FIREWALL=$(remote_var "$REMOTE_FIREWALL") ENABLE_REMOTE_IP_FORWARD=$(remote_var "$ENABLE_REMOTE_IP_FORWARD") bash -s" <<'RS'
 set -euo pipefail
-TUN_ID='"$TUN_ID"'
-IP_REMOTE='"$IP_REMOTE"'
-MASK='"$MASK"'
-MTU='"$MTU"'
-TCP_PORTS_STR='"$TCP_PORTS"'
-UDP_PORTS_STR='"$UDP_PORTS"'
-REMOTE_FIREWALL='"$REMOTE_FIREWALL"'
-ENABLE_REMOTE_IP_FORWARD='"$ENABLE_REMOTE_IP_FORWARD"'
 
 ip addr add "${IP_REMOTE}/${MASK}" dev "tun${TUN_ID}" 2>/dev/null || true
 ip link set "tun${TUN_ID}" up
@@ -264,6 +261,9 @@ RS
     iptables_add nat PREROUTING -i "$WAN_IF" -p udp --dport "$p" -j DNAT --to-destination "${IP_REMOTE}"
     iptables_add filter FORWARD -i "$WAN_IF" -o "tun${TUN_ID}" -p udp --dport "$p" -j ACCEPT
   done
+
+  # Return traffic for forwarded connections (important when FORWARD policy is DROP)
+  iptables_add filter FORWARD -i "tun${TUN_ID}" -o "$WAN_IF" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   # SNAT out tun so return traffic comes back cleanly
   iptables_add nat POSTROUTING -o "tun${TUN_ID}" -j MASQUERADE

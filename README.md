@@ -1,38 +1,104 @@
-# ssh-tunnel
+# SSH TUN + DNAT
 
-نحوه‌ی استفاده مثل مثال خودت (curl|bash)
+این ریپو یک اسکریپت نصب/کانفیگ برای سناریوی زیر می‌دهد:
 
-بعد از اینکه اسکریپت رو تو GitHub گذاشتی، روی هر سرور اینو می‌زنی:
+- ساخت لینک لایه ۳ بین دو سرور با `ssh -w` (اینترفیس `tun`)
+- DNAT کردن پورت‌های ورودی روی سرور ایران به سمت IP تونلِ سرور خارج
+- پایدارسازی با `systemd`
 
+## سناریو
+
+- `iran`: ورودی کاربران
+- `khrej`: محل اجرای سرویس اصلی
+- مثال:
+  - `iran tun5 = 192.168.83.1/30`
+  - `khrej tun5 = 192.168.83.2/30`
+  - کاربران به `iran:2096` وصل می‌شوند و ترافیک روی تونل به `khrej:2096` می‌رسد.
+
+---
+
+## اجرا
+
+> اسکریپت باید با `root` اجرا شود.
+
+### روش مستقیم از GitHub
+
+```bash
 bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
+```
 
+یک بار روی `khrej` اجرا کن (Role = `khrej`) و یک بار روی `iran` (Role = `iran`).
 
-یک‌بار روی khrej اجرا کن و وقتی پرسید Role، بگو: khrej
+### اجرای بدون سؤال Role
 
-یک‌بار روی iran اجرا کن و Role را iran بزن (سؤال‌ها را جواب بده)
-
-اگر بخوای بدون سؤال Role مشخص باشه:
-
+```bash
 ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
 ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
+```
 
+---
 
-این اسکریپت دقیقاً چه کارهایی می‌کند؟
+## اسکریپت چه کار می‌کند؟
 
-روی khrej:
+## 1) وقتی Role = khrej
 
-PermitTunnel yes و AllowTcpForwarding yes را در sshd_config ست می‌کند (لازمه‌ی ssh -w).
+- نصب ابزارهای لازم (`openssh-server`, `iproute2`, `iptables`)
+- بررسی/فعال‌سازی `tun` (`/dev/net/tun` + `modprobe tun`)
+- تنظیم `sshd_config`:
+  - `PermitTunnel yes`
+  - `AllowTcpForwarding yes`
+- تست و ری‌استارت سرویس SSH
 
-روی iran:
+## 2) وقتی Role = iran
 
-تون را با ssh -w TUN:TUN -N بالا می‌آورد.
+- گرفتن اطلاعات تونل و پورت‌ها به‌صورت interactive
+- بررسی دسترسی SSH بدون پسورد به `khrej`
+- ساخت سرویس `systemd` برای نگه‌داشتن تونل با `ssh -w TUN:TUN -N`
+- اجرای setup بعد از بالا آمدن تونل:
+  - ست کردن IP/MTU روی دو طرف
+  - فعال‌سازی `net.ipv4.ip_forward=1` روی `iran`
+  - DNAT در `PREROUTING`
+  - `MASQUERADE` در `POSTROUTING` روی خروجی `tun`
+  - (اختیاری) باز کردن فایروال روی `khrej` برای پورت‌ها روی `tun`
+  - (اختیاری) MSS clamp برای مسیرهای MTU محدود
 
-IP/MTU تون را ست می‌کند
+---
 
-ip_forward=1 را فعال می‌کند
+## نکات مهم
 
-DNAT روی PREROUTING و MASQUERADE روی POSTROUTING می‌گذارد.
+- اگر اتصال‌های TCP (مثلاً TLS/WS) گیر می‌کنند:
+  - MTU پایین‌تر (مثلاً `1240`) انتخاب کن.
+  - MSS clamp را فعال کن.
+- روی بعضی سیستم‌ها backend فایروال `nft` است و دستور `iptables` از لایه سازگاری استفاده می‌کند.
+- اگر policy زنجیره‌های فایروال روی `DROP` باشد، قوانین اضافی ممکن است لازم شود (مثل allow برای `ESTABLISHED,RELATED`).
 
-اگر خواستی MSS clamp هم فعال می‌کند تا مشکل MTU کمتر شود.
+---
 
-همه چیز را با systemd پایدار می‌کند و بعد از هر ری‌استارت سرویس، دوباره ستاپ را اعمال می‌کند.
+## عیب‌یابی سریع
+
+### روی iran
+
+```bash
+ip a show tun5
+systemctl status ssh-tun5-dnat.service --no-pager
+iptables -t nat -vnL PREROUTING
+iptables -vnL FORWARD
+```
+
+### روی khrej
+
+```bash
+ip a show tun5
+ss -lntup | grep 2096
+```
+
+---
+
+## مسیر فایل‌های ساخته‌شده توسط اسکریپت
+
+- env:
+  - `/etc/ssh-tun-dnat/tunX.env`
+- setup script:
+  - `/usr/local/sbin/ssh-tun-dnat-setup.sh`
+- service:
+  - `/etc/systemd/system/ssh-tunX-dnat.service`
