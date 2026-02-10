@@ -205,6 +205,10 @@ remote_exec() {
     "${USER}@${HOST}" "$@"
 }
 
+remote_var() {
+  printf "%q" "$1"
+}
+
 main() {
   wait_tun || { echo "tun${TUN_ID} بالا نیامد."; exit 1; }
 
@@ -215,16 +219,9 @@ main() {
   ensure_sysctl
 
   # Remote setup: assign IP + MTU + (optional) ip_forward + (optional) allow INPUT on tun
-  remote_exec "bash -s" <<'RS'
+  remote_exec \
+    "TUN_ID=$(remote_var "$TUN_ID") IP_REMOTE=$(remote_var "$IP_REMOTE") MASK=$(remote_var "$MASK") MTU=$(remote_var "$MTU") TCP_PORTS_STR=$(remote_var "$TCP_PORTS") UDP_PORTS_STR=$(remote_var "$UDP_PORTS") REMOTE_FIREWALL=$(remote_var "$REMOTE_FIREWALL") ENABLE_REMOTE_IP_FORWARD=$(remote_var "$ENABLE_REMOTE_IP_FORWARD") bash -s" <<'RS'
 set -euo pipefail
-TUN_ID='"$TUN_ID"'
-IP_REMOTE='"$IP_REMOTE"'
-MASK='"$MASK"'
-MTU='"$MTU"'
-TCP_PORTS_STR='"$TCP_PORTS"'
-UDP_PORTS_STR='"$UDP_PORTS"'
-REMOTE_FIREWALL='"$REMOTE_FIREWALL"'
-ENABLE_REMOTE_IP_FORWARD='"$ENABLE_REMOTE_IP_FORWARD"'
 
 ip addr add "${IP_REMOTE}/${MASK}" dev "tun${TUN_ID}" 2>/dev/null || true
 ip link set "tun${TUN_ID}" up
@@ -264,6 +261,9 @@ RS
     iptables_add nat PREROUTING -i "$WAN_IF" -p udp --dport "$p" -j DNAT --to-destination "${IP_REMOTE}"
     iptables_add filter FORWARD -i "$WAN_IF" -o "tun${TUN_ID}" -p udp --dport "$p" -j ACCEPT
   done
+
+  # Return traffic for forwarded connections (important when FORWARD policy is DROP)
+  iptables_add filter FORWARD -i "tun${TUN_ID}" -o "$WAN_IF" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   # SNAT out tun so return traffic comes back cleanly
   iptables_add nat POSTROUTING -o "tun${TUN_ID}" -j MASQUERADE
@@ -321,6 +321,37 @@ EOF
   systemctl enable --now "$(basename "$unit")"
   log "systemd service enabled: $(basename "$unit")"
   log "Status: systemctl status $(basename "$unit") --no-pager"
+}
+
+
+verify_tunnel_health() {
+  log "بررسی سلامت تونل tun${TUN_ID} ..."
+
+  local ok_local=0 ok_remote=0
+  for _ in $(seq 1 20); do
+    if ip link show "tun${TUN_ID}" >/dev/null 2>&1; then
+      ok_local=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$ok_local" -eq 1 ]] || die "tun${TUN_ID} روی iran بالا نیامد. لاگ سرویس را ببین: journalctl -u ssh-tun${TUN_ID}-dnat.service -n 100 --no-pager"
+
+  for _ in $(seq 1 20); do
+    if ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "ip link show tun${TUN_ID} >/dev/null 2>&1"; then
+      ok_remote=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$ok_remote" -eq 1 ]] || die "tun${TUN_ID} روی khrej بالا نیامد. وضعیت sshd/PermitTunnel را بررسی کن."
+
+  if ping -c 2 -W 2 "$IP_REMOTE" >/dev/null 2>&1; then
+    log "Ping تونل به ${IP_REMOTE} موفق بود."
+  else
+    warn "Ping تونل به ${IP_REMOTE} ناموفق بود. ممکن است ICMP بسته باشد؛ وضعیت را با این‌ها چک کن:"
+    warn "ip a show tun${TUN_ID} && ssh -p ${SSH_PORT} ${USER}@${HOST} 'ip a show tun${TUN_ID}'"
+  fi
 }
 
 setup_role_khrej() {
@@ -461,6 +492,7 @@ setup_role_iran() {
 
   envfile="$(write_env)"
   create_systemd_service_iran "$envfile"
+  verify_tunnel_health
 
   log "تمام ✅"
   echo "-------------------------------------------------"
