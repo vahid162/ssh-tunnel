@@ -24,7 +24,7 @@
 ### روش مستقیم از GitHub
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
+bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
 ```
 
 یک بار روی `khrej` اجرا کن (Role = `khrej`) و یک بار روی `iran` (Role = `iran`).
@@ -32,8 +32,8 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ss
 ### اجرای بدون سؤال Role
 
 ```bash
-ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
-ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
+ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
+ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
 ```
 
 ---
@@ -61,6 +61,7 @@ ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tun
   - `MASQUERADE` در `POSTROUTING` روی خروجی `tun`
   - (اختیاری) باز کردن فایروال روی `khrej` برای پورت‌ها روی `tun`
   - (اختیاری) MSS clamp برای مسیرهای MTU محدود
+- بعد از فعال‌سازی سرویس، به‌صورت خودکار سلامت تونل را چک می‌کند (وجود `tunX` روی هر دو سمت + تست ping best-effort)
 
 ---
 

@@ -323,6 +323,37 @@ EOF
   log "Status: systemctl status $(basename "$unit") --no-pager"
 }
 
+
+verify_tunnel_health() {
+  log "بررسی سلامت تونل tun${TUN_ID} ..."
+
+  local ok_local=0 ok_remote=0
+  for _ in $(seq 1 20); do
+    if ip link show "tun${TUN_ID}" >/dev/null 2>&1; then
+      ok_local=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$ok_local" -eq 1 ]] || die "tun${TUN_ID} روی iran بالا نیامد. لاگ سرویس را ببین: journalctl -u ssh-tun${TUN_ID}-dnat.service -n 100 --no-pager"
+
+  for _ in $(seq 1 20); do
+    if ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "ip link show tun${TUN_ID} >/dev/null 2>&1"; then
+      ok_remote=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$ok_remote" -eq 1 ]] || die "tun${TUN_ID} روی khrej بالا نیامد. وضعیت sshd/PermitTunnel را بررسی کن."
+
+  if ping -c 2 -W 2 "$IP_REMOTE" >/dev/null 2>&1; then
+    log "Ping تونل به ${IP_REMOTE} موفق بود."
+  else
+    warn "Ping تونل به ${IP_REMOTE} ناموفق بود. ممکن است ICMP بسته باشد؛ وضعیت را با این‌ها چک کن:"
+    warn "ip a show tun${TUN_ID} && ssh -p ${SSH_PORT} ${USER}@${HOST} 'ip a show tun${TUN_ID}'"
+  fi
+}
+
 setup_role_khrej() {
   log "Role = khrej (server)"
   pkg_install openssh-server iproute2 iptables
@@ -461,6 +492,7 @@ setup_role_iran() {
 
   envfile="$(write_env)"
   create_systemd_service_iran "$envfile"
+  verify_tunnel_health
 
   log "تمام ✅"
   echo "-------------------------------------------------"
