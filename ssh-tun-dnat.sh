@@ -262,6 +262,9 @@ RS
     iptables_add filter FORWARD -i "$WAN_IF" -o "tun${TUN_ID}" -p udp --dport "$p" -j ACCEPT
   done
 
+  # Return traffic for forwarded connections (important when FORWARD policy is DROP)
+  iptables_add filter FORWARD -i "tun${TUN_ID}" -o "$WAN_IF" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
   # SNAT out tun so return traffic comes back cleanly
   iptables_add nat POSTROUTING -o "tun${TUN_ID}" -j MASQUERADE
 
