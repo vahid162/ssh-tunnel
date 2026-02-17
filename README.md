@@ -1,61 +1,61 @@
-# SSH TUN + DNAT (نصب خیلی ساده)
+# SSH TUN + DNAT (nasb kheili sade)
 
-این پروژه برای تانل **ایران → خارج** است.
+In project baraye tunnel **Iran -> Kharej** ast.
 
-هدف: فقط با **کپی/پیست دستور** روی هر سرور، همه چیز خودکار انجام شود.
+Hadaf: faghat ba **copy/paste command** ru har server, hame chiz automatic anjam shavad.
 
-فقط 2 کار:
+---
 
-## اجرای سریع (فقط کپی/پیست)
+## Ejraye sari (faghat copy/paste)
 
-> ترتیب مهم: **اول سرور خارج، بعد سرور ایران**
+> Tartib mohem: **aval server kharej, baad server iran**
 
-### 1) روی سرور خارج (Kharej) این را اجرا کن
+### 1) Ru server Kharej in ra ejra kon
 
 ```bash
 ROLE=khrej bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
 ```
 
-### 2) روی سرور ایران (Iran) این را اجرا کن
+### 2) Ru server Iran in ra ejra kon
 
 ```bash
 ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
 ```
 
-در مرحله ایران، اسکریپت خودش سؤال‌ها را می‌پرسد (IP خارج، پورت SSH، TUN ID، پورت‌ها و ...).
+Dar marhale Iran, script khodesh soal ha ra miporsad (IP kharej, SSH port, TUN ID, port ha va ...).
 
 ---
 
-## مقدارهای پیشنهادی برای مبتدی (روی ایران)
+## Meghdarhaye pishnahadi baraye mobtadi (ru Iran)
 
 - `TUN ID`: `5`
-- `IP تونل ایران`: `192.168.83.1`
-- `IP تونل خارج`: `192.168.83.2`
+- `IP tunnel Iran`: `192.168.83.1`
+- `IP tunnel Kharej`: `192.168.83.2`
 - `Mask`: `30`
 - `MTU`: `1240`
-- `TCP ports`: مثل `443,2096`
+- `TCP ports`: mesl `443,2096`
 - `MSS clamp`: `y`
 
-اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
+Age motmaen nisti, pishfarz ha ra taghir nade.
 
 ---
 
-## اگر لینک raw در دسترس نبود (خیلی نادر)
+## Agar link raw dar dastres nabood (kheili nadar)
 
 ```bash
-# روی سیستم خودت
+# ru system khodet
 scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
 
-# روی همان سرور
+# ru haman server
 ssh root@<SERVER_IP> 'ROLE=khrej bash /root/ssh-tun-dnat.sh'
 ssh root@<SERVER_IP> 'ROLE=iran  bash /root/ssh-tun-dnat.sh'
 ```
 
 ---
 
-## چک نهایی بعد از نصب
+## Check nahayi baad az nasb
 
-### روی ایران
+### Ru Iran
 
 ```bash
 ip a show tun5
@@ -63,20 +63,20 @@ systemctl status ssh-tun5-dnat.service --no-pager
 iptables -t nat -vnL PREROUTING
 ```
 
-### روی خارج
+### Ru Kharej
 
 ```bash
 ip a show tun5
 ss -lntup
 ```
 
-> اگر `tun5` نیست، عدد 5 را با `TUN ID` خودت عوض کن.
+> Agar `tun5` nist, adad 5 ra ba `TUN ID` khodet avaz kon.
 
 ---
 
-## اگر مشکل داشتی این خروجی‌ها را بفرست
+## Agar moshkel dashti in khoroji ha ra befrest
 
-### ایران
+### Iran
 
 ```bash
 ip a
@@ -86,7 +86,7 @@ iptables -t nat -vnL
 iptables -vnL FORWARD
 ```
 
-### خارج
+### Kharej
 
 ```bash
 ip a
@@ -94,4 +94,4 @@ ss -lntup
 cat /etc/ssh/sshd_config | sed -n '1,220p'
 ```
 
-من با همین خروجی‌ها دقیق و قدم‌به‌قدم مشکل را پیدا می‌کنم.
+Man ba hamin khoroji ha daghigh va ghadam-be-ghadam moshkel ra peyda mikonam.
