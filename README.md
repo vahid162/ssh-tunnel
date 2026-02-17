@@ -47,6 +47,41 @@ ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunne
 
 ---
 
+## اگر سرور ایران عوض شد (مهاجرت به سرور جدید)
+
+بله؛ در حالت معمول اگر روی **سرور ایران جدید** همان دستور `ROLE=iran` را اجرا کنی، نصب از صفر انجام می‌شود و تونل بالا می‌آید.
+
+فقط این 4 نکته را رعایت کن:
+
+1. روی **خارج** قبلاً همین اسکریپت اجرا شده باشد (`PermitTunnel yes` فعال باشد).
+2. روی ایران جدید، به خارج با SSH دسترسی داشته باشی (پسورد/کلید).
+3. همان مقادیر قبلی را وارد کنی (خصوصاً `IP_REMOTE`, `TUN ID`, پورت‌ها) مگر اینکه عمداً بخواهی تغییر بدهی.
+4. اگر سرور ایران قبلی هنوز روشن است، سرویس قدیمی را خاموش کن تا تداخل نداشته باشد.
+
+### دستورهای آماده (کپی/پیست)
+
+روی **ایران جدید**:
+
+```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+روی **ایران قدیمی** (اختیاری ولی پیشنهادی، برای جلوگیری از تداخل):
+
+```bash
+systemctl list-unit-files | awk '/^ssh-tun[0-9]+-dnat\.service/{print $1}' | xargs -r -I{} systemctl disable --now {}
+```
+
+### بعد از مهاجرت، سریع چک کن
+
+```bash
+ip a | sed -n '1,220p'
+systemctl list-units --type=service --all | grep ssh-tun
+iptables -t nat -vnL PREROUTING
+```
+
+---
+
 ## مقدارهای پیشنهادی برای مبتدی (روی ایران)
 
 - `TUN ID`: `5`
@@ -60,7 +95,7 @@ ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunne
 
 اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
 
-### روی خارج
+## اگر لینک raw در دسترس نبود (خیلی نادر)
 
 ## اگر لینک raw در دسترس نبود (خیلی نادر)
 
