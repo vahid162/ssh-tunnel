@@ -95,7 +95,7 @@ iptables -t nat -vnL PREROUTING
 
 اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
 
----
+## اگر لینک raw در دسترس نبود (خیلی نادر)
 
 ## اگر لینک raw در دسترس نبود (خیلی نادر)
 
@@ -115,7 +115,7 @@ ssh root@<SERVER_IP> 'ROLE=iran  bash /root/ssh-tun-dnat.sh'
 ### روی ایران
 
 ```bash
-ip a show tun5
+ip a
 systemctl status ssh-tun5-dnat.service --no-pager
 iptables -t nat -vnL PREROUTING
 ```
