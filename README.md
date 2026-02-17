@@ -24,7 +24,19 @@ ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunne
 
 در مرحله ایران، اسکریپت خودش سؤال‌ها را می‌پرسد (IP خارج، پورت SSH، TUN ID، پورت‌ها و ...).
 
----
+> ترتیب مهم: **اول سرور خارج، بعد سرور ایران**
+
+### 1) روی سرور خارج (Kharej) این را اجرا کن
+
+```bash
+ROLE=khrej bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+### 2) روی سرور ایران (Iran) این را اجرا کن
+
+```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
 
 
 ## تاثیر روی دسترسی‌های دیگر سرور (خیلی مهم)
@@ -181,7 +193,7 @@ ssh root@<SERVER_IP> 'ROLE=iran  bash /root/ssh-tun-dnat.sh'
 ### روی ایران
 
 ```bash
-ip a show tun5
+ip a
 systemctl status ssh-tun5-dnat.service --no-pager
 iptables -t nat -vnL PREROUTING
 ```
