@@ -131,8 +131,30 @@ detect_wan_if() {
 }
 
 ports_to_array() {
-  # input: "2096,2087  443"
-  echo "$1" | tr ', ' '\n' | awk 'NF{print $1}' | grep -E '^[0-9]+$' || true
+  # Supports: single port, comma/space list, and ranges (e.g. 443,8443,20000-20010)
+  local input="${1//,/ }"
+  awk '
+    function add_port(p) {
+      if (p >= 1 && p <= 65535 && !seen[p]++) print p
+    }
+    {
+      for (i = 1; i <= NF; i++) {
+        token = $i
+        if (token ~ /^[0-9]+$/) {
+          add_port(token + 0)
+        } else if (token ~ /^[0-9]+-[0-9]+$/) {
+          split(token, a, "-")
+          s = a[1] + 0
+          e = a[2] + 0
+          if (s <= e) {
+            for (p = s; p <= e; p++) add_port(p)
+          } else {
+            for (p = e; p <= s; p++) add_port(p)
+          }
+        }
+      }
+    }
+  ' <<<"$input" | sort -n
 }
 
 write_env() {
@@ -237,7 +259,31 @@ fi
 
 if [[ "$REMOTE_FIREWALL" == "1" ]]; then
   # Allow service ports on tun interface (INPUT)
-  to_arr() { echo "$1" | tr ', ' '\n' | awk 'NF{print $1}' | grep -E '^[0-9]+$' || true; }
+  to_arr() {
+    local input="${1//,/ }"
+    awk '
+      function add_port(p) {
+        if (p >= 1 && p <= 65535 && !seen[p]++) print p
+      }
+      {
+        for (i = 1; i <= NF; i++) {
+          token = $i
+          if (token ~ /^[0-9]+$/) {
+            add_port(token + 0)
+          } else if (token ~ /^[0-9]+-[0-9]+$/) {
+            split(token, a, "-")
+            s = a[1] + 0
+            e = a[2] + 0
+            if (s <= e) {
+              for (p = s; p <= e; p++) add_port(p)
+            } else {
+              for (p = e; p <= s; p++) add_port(p)
+            }
+          }
+        }
+      }
+    ' <<<"$input" | sort -n || true
+  }
   for p in $(to_arr "$TCP_PORTS_STR"); do
     iptables -C INPUT -i "tun${TUN_ID}" -p tcp --dport "$p" -j ACCEPT 2>/dev/null || \
     iptables -A INPUT -i "tun${TUN_ID}" -p tcp --dport "$p" -j ACCEPT
@@ -250,7 +296,31 @@ fi
 RS
 
   # DNAT on iran: WAN -> IP_REMOTE (over tun)
-  to_arr() { echo "$1" | tr ', ' '\n' | awk 'NF{print $1}' | grep -E '^[0-9]+$' || true; }
+  to_arr() {
+    local input="${1//,/ }"
+    awk '
+      function add_port(p) {
+        if (p >= 1 && p <= 65535 && !seen[p]++) print p
+      }
+      {
+        for (i = 1; i <= NF; i++) {
+          token = $i
+          if (token ~ /^[0-9]+$/) {
+            add_port(token + 0)
+          } else if (token ~ /^[0-9]+-[0-9]+$/) {
+            split(token, a, "-")
+            s = a[1] + 0
+            e = a[2] + 0
+            if (s <= e) {
+              for (p = s; p <= e; p++) add_port(p)
+            } else {
+              for (p = e; p <= s; p++) add_port(p)
+            }
+          }
+        }
+      }
+    ' <<<"$input" | sort -n || true
+  }
 
   for p in $(to_arr "$TCP_PORTS"); do
     iptables_add nat PREROUTING -i "$WAN_IF" -p tcp --dport "$p" -j DNAT --to-destination "${IP_REMOTE}"
@@ -455,8 +525,8 @@ setup_role_iran() {
 
   MTU="$(ask 'MTU for tun (1240 is good if you have MTU issues)' '1240')"
 
-  TCP_PORTS_STR="$(ask 'TCP ports to forward (comma-separated)' '2096')"
-  UDP_PORTS_STR="$(ask 'UDP ports to forward (empty = none)' '')"
+  TCP_PORTS_STR="$(ask 'TCP ports to forward (1 or more: 2096 OR 443,8443 OR 20000-20010)' '2096')"
+  UDP_PORTS_STR="$(ask 'UDP ports to forward (empty = none; supports same format)' '')"
 
   WAN_IF="$(detect_wan_if || true)"
   WAN_IF="$(ask 'Internet input interface on iran (auto-detected)' "${WAN_IF:-eth0}")"
