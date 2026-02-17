@@ -24,7 +24,7 @@
 ### روش مستقیم از GitHub
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
+bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
 ```
 
 یک بار روی `khrej` اجرا کن (Role = `khrej`) و یک بار روی `iran` (Role = `iran`).
@@ -32,8 +32,8 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-
 ### اجرای بدون سؤال Role
 
 ```bash
-ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
-ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/<USER>/<REPO>/main/ssh-tun-dnat.sh")
+ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
+ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
 ```
 
 ---
