@@ -88,6 +88,7 @@ ssh root@<SERVER_IP> 'bash /root/ssh-tun-dnat.sh'
 ```bash
 ip a show tun5
 systemctl status ssh-tun5-dnat.service --no-pager
+journalctl -u ssh-tun5-dnat.service -n 100 --no-pager
 iptables -t nat -vnL PREROUTING
 ```
 
