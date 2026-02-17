@@ -36,6 +36,17 @@ ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tun
 ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
 ```
 
+> اگر این URL روی سرور شما `404` داد، یعنی این ریپو/branch از بیرون قابل دسترس نیست (مثلاً private یا هنوز push نشده) و باید از روش جایگزین پایین استفاده کنید.
+
+### روش جایگزین (بدون raw URL)
+
+اگر ریپو private است یا raw در دسترس نیست، روی سرور مقصد فایل را مستقیم کپی و اجرا کن:
+
+```bash
+scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
+ssh root@<SERVER_IP> 'bash /root/ssh-tun-dnat.sh'
+```
+
 ---
 
 ## اسکریپت چه کار می‌کند؟
