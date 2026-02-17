@@ -2,93 +2,64 @@
 
 این پروژه برای تانل **ایران → خارج** است.
 
-هدف: با **یک دستور** روی هر سرور اجرا کنی، اسکریپت خودش سؤال‌ها را بپرسد و تنظیمات را انجام دهد.
-
----
-
-## کاری که باید انجام بدهی (خیلی خلاصه)
+هدف: فقط با **کپی/پیست دستور** روی هر سرور، همه چیز خودکار انجام شود.
 
 فقط 2 کار:
 
-1) روی سرور خارج این یک دستور را بزن.
-2) روی سرور ایران این یک دستور را بزن.
+## اجرای سریع (فقط کپی/پیست)
 
-> ترتیب مهم است: **اول خارج، بعد ایران**.
+> ترتیب مهم: **اول سرور خارج، بعد سرور ایران**
 
----
-
-## دستور یک‌خطی روی سرور خارج
+### 1) روی سرور خارج (Kharej) این را اجرا کن
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/<BRANCH>/ssh-tun-dnat.sh)
+ROLE=khrej bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
 ```
 
-بعد از اجرا، وقتی پرسید Role، مقدار زیر را بده:
-
-```text
-khrej
-```
-
-اسکریپت خودش:
-- پکیج‌ها را نصب می‌کند.
-- `PermitTunnel yes` را در SSH فعال می‌کند.
-
----
-
-## دستور یک‌خطی روی سرور ایران
+### 2) روی سرور ایران (Iran) این را اجرا کن
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/<BRANCH>/ssh-tun-dnat.sh)
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
 ```
 
-بعد از اجرا، وقتی پرسید Role، مقدار زیر را بده:
-
-```text
-iran
-```
-
-اسکریپت بقیه سؤال‌ها را مرحله‌به‌مرحله می‌پرسد (IP خارج، پورت SSH، TUN ID، پورت‌های فوروارد و ...).
+در مرحله ایران، اسکریپت خودش سؤال‌ها را می‌پرسد (IP خارج، پورت SSH، TUN ID، پورت‌ها و ...).
 
 ---
 
-## اگر raw لینک کار نکرد (404 / private)
-
-اگر لینک GitHub raw در دسترس نبود، همین روش جایگزین را استفاده کن:
-
-```bash
-# روی سیستم خودت
-scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
-
-# روی همان سرور
-ssh root@<SERVER_IP> 'bash /root/ssh-tun-dnat.sh'
-```
-
-برای خارج Role=`khrej` و برای ایران Role=`iran`.
-
----
-
-## پیشنهاد مقدارها برای کاربر مبتدی (روی ایران)
+## مقدارهای پیشنهادی برای مبتدی (روی ایران)
 
 - `TUN ID`: `5`
 - `IP تونل ایران`: `192.168.83.1`
 - `IP تونل خارج`: `192.168.83.2`
 - `Mask`: `30`
 - `MTU`: `1240`
-- `TCP ports`: مثلاً `443,2096`
+- `TCP ports`: مثل `443,2096`
 - `MSS clamp`: `y`
 
-اگر نمی‌دانی چه بزنی، فعلاً پیش‌فرض‌ها را نگه دار.
+اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
 
 ---
 
-## چک نهایی (بعد از نصب)
+## اگر لینک raw در دسترس نبود (خیلی نادر)
+
+```bash
+# روی سیستم خودت
+scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
+
+# روی همان سرور
+ssh root@<SERVER_IP> 'ROLE=khrej bash /root/ssh-tun-dnat.sh'
+ssh root@<SERVER_IP> 'ROLE=iran  bash /root/ssh-tun-dnat.sh'
+```
+
+---
+
+## چک نهایی بعد از نصب
 
 ### روی ایران
 
 ```bash
 ip a show tun5
 systemctl status ssh-tun5-dnat.service --no-pager
-journalctl -u ssh-tun5-dnat.service -n 100 --no-pager
 iptables -t nat -vnL PREROUTING
 ```
 
@@ -99,13 +70,13 @@ ip a show tun5
 ss -lntup
 ```
 
-اگر `tun5` نداری، عدد `5` را با `TUN ID` خودت عوض کن.
+> اگر `tun5` نیست، عدد 5 را با `TUN ID` خودت عوض کن.
 
 ---
 
-## اگر مشکل داشتی، این خروجی‌ها را بفرست
+## اگر مشکل داشتی این خروجی‌ها را بفرست
 
-### از ایران
+### ایران
 
 ```bash
 ip a
@@ -115,7 +86,7 @@ iptables -t nat -vnL
 iptables -vnL FORWARD
 ```
 
-### از خارج
+### خارج
 
 ```bash
 ip a
@@ -123,4 +94,4 @@ ss -lntup
 cat /etc/ssh/sshd_config | sed -n '1,220p'
 ```
 
-من بر اساس همین خروجی‌ها دقیق قدم‌به‌قدم می‌گم کجا مشکل است.
+من با همین خروجی‌ها دقیق و قدم‌به‌قدم مشکل را پیدا می‌کنم.
