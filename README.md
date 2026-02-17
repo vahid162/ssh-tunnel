@@ -1,136 +1,154 @@
-# SSH TUN + DNAT
+# SSH TUN + DNAT (نصب خیلی ساده)
 
-این ریپو یک اسکریپت نصب/کانفیگ برای سناریوی زیر می‌دهد:
+این پروژه برای تانل **ایران → خارج** است.
 
-- ساخت لینک لایه ۳ بین دو سرور با `ssh -w` (اینترفیس `tun`)
-- DNAT کردن پورت‌های ورودی روی سرور ایران به سمت IP تونلِ سرور خارج
-- پایدارسازی با `systemd`
-
-## سناریو
-
-- `iran`: ورودی کاربران
-- `khrej`: محل اجرای سرویس اصلی
-- مثال:
-  - `iran tun5 = 192.168.83.1/30`
-  - `khrej tun5 = 192.168.83.2/30`
-  - کاربران به `iran:2096` وصل می‌شوند و ترافیک روی تونل به `khrej:2096` می‌رسد.
+هدف: فقط با **کپی/پیست دستور** روی هر سرور، همه چیز خودکار انجام شود.
 
 ---
 
-## اجرا
+## اجرای سریع (فقط کپی/پیست)
 
-> اسکریپت باید با `root` اجرا شود.
+> ترتیب مهم: **اول سرور خارج، بعد سرور ایران**
 
-### روش مستقیم از GitHub (بعد از تعیین URL درست)
-
-> **مهم:** در حال حاضر ممکن است URL ثابت 404 بدهد اگر ریپو private باشد یا نام owner/repo اشتباه باشد.
-> قبل از اجرا، آدرس raw واقعی را با دستور زیر پیدا/تست کن.
+### 1) روی سرور خارج (Kharej) این را اجرا کن
 
 ```bash
-# 1) URL را با owner/repo/branch واقعی خودت بساز
-RAW_URL="https://raw.githubusercontent.com/<OWNER>/<REPO>/<BRANCH>/ssh-tun-dnat.sh"
-
-# 2) باید 200 برگرداند
-curl -I "$RAW_URL" | head -n 1
-
-# 3) بعد اجرا کن
-bash <(curl -fsSL "$RAW_URL")
+ROLE=khrej bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
 ```
 
-یک بار روی `khrej` اجرا کن (Role = `khrej`) و یک بار روی `iran` (Role = `iran`).
-
-### اجرای بدون سؤال Role
+### 2) روی سرور ایران (Iran) این را اجرا کن
 
 ```bash
-RAW_URL="https://raw.githubusercontent.com/<OWNER>/<REPO>/<BRANCH>/ssh-tun-dnat.sh"
-ROLE=khrej bash <(curl -fsSL "$RAW_URL")
-ROLE=iran  bash <(curl -fsSL "$RAW_URL")
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
 ```
 
-### روش جایگزین (بدون raw URL)
+در مرحله ایران، اسکریپت خودش سؤال‌ها را می‌پرسد (IP خارج، پورت SSH، TUN ID، پورت‌ها و ...).
 
-اگر ریپو private است یا raw در دسترس نیست، روی سرور مقصد فایل را مستقیم کپی و اجرا کن:
+---
+
+
+## مدیریت بعد از نصب (خیلی مهم)
+
+اگر یک‌بار نصب انجام شده، می‌تونی **همان اسکریپت** را دوباره اجرا کنی تا تنظیمات قبلی را مدیریت/تغییر بدهی:
 
 ```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+وقتی پروفایل قبلی پیدا شود، منوی مدیریت می‌بینی و می‌توانی این کارها را انجام بدهی:
+
+- نمایش تنظیمات فعلی
+- Restart / Stop / Start سرویس
+- اجرای مجدد setup برای اعمال دوباره iptables/tun
+- ویرایش کامل تنظیمات (IP ها، پورت‌ها، MTU، MSS، فایروال و ...)
+- حذف پروفایل و سرویس
+
+> اگر در ویرایش، `TUN ID` را عوض کنی، سرویس/پروفایل قبلی خودکار جمع می‌شود و سرویس جدید ساخته می‌شود.
+
+---
+
+## اگر سرور ایران عوض شد (مهاجرت به سرور جدید)
+
+بله؛ در حالت معمول اگر روی **سرور ایران جدید** همان دستور `ROLE=iran` را اجرا کنی، نصب از صفر انجام می‌شود و تونل بالا می‌آید.
+
+فقط این 4 نکته را رعایت کن:
+
+1. روی **خارج** قبلاً همین اسکریپت اجرا شده باشد (`PermitTunnel yes` فعال باشد).
+2. روی ایران جدید، به خارج با SSH دسترسی داشته باشی (پسورد/کلید).
+3. همان مقادیر قبلی را وارد کنی (خصوصاً `IP_REMOTE`, `TUN ID`, پورت‌ها) مگر اینکه عمداً بخواهی تغییر بدهی.
+4. اگر سرور ایران قبلی هنوز روشن است، سرویس قدیمی را خاموش کن تا تداخل نداشته باشد.
+
+### دستورهای آماده (کپی/پیست)
+
+روی **ایران جدید**:
+
+```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+روی **ایران قدیمی** (اختیاری ولی پیشنهادی، برای جلوگیری از تداخل):
+
+```bash
+systemctl list-unit-files | awk '/^ssh-tun[0-9]+-dnat\.service/{print $1}' | xargs -r -I{} systemctl disable --now {}
+```
+
+### بعد از مهاجرت، سریع چک کن
+
+```bash
+ip a | sed -n '1,220p'
+systemctl list-units --type=service --all | grep ssh-tun
+iptables -t nat -vnL PREROUTING
+```
+
+---
+
+## مقدارهای پیشنهادی برای مبتدی (روی ایران)
+
+- `TUN ID`: `5`
+- `IP تونل ایران`: `192.168.83.1`
+- `IP تونل خارج`: `192.168.83.2`
+- `Mask`: `30`
+- `MTU`: `1240`
+- `TCP ports`: می‌تونی 1 تا هرچندتا بدی، مثل `2096` یا `443,2096` یا بازه `20000-20010`
+- `UDP ports`: اگر خواستی مثل TCP (تکی/چندتا/بازه) وارد کن؛ اگر نمی‌خوای خالی بگذار
+- `MSS clamp`: `y`
+
+اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
+
+---
+
+## اگر لینک raw در دسترس نبود (خیلی نادر)
+
+```bash
+# روی سیستم خودت
 scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
-ssh root@<SERVER_IP> 'bash /root/ssh-tun-dnat.sh'
-```
 
-> اگر این URL روی سرور شما `404` داد، یعنی این ریپو/branch از بیرون قابل دسترس نیست (مثلاً private یا هنوز push نشده) و باید از روش جایگزین پایین استفاده کنید.
-
-### روش جایگزین (بدون raw URL)
-
-اگر ریپو private است یا raw در دسترس نیست، روی سرور مقصد فایل را مستقیم کپی و اجرا کن:
-
-```bash
-scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
-ssh root@<SERVER_IP> 'bash /root/ssh-tun-dnat.sh'
+# روی همان سرور
+ssh root@<SERVER_IP> 'ROLE=khrej bash /root/ssh-tun-dnat.sh'
+ssh root@<SERVER_IP> 'ROLE=iran  bash /root/ssh-tun-dnat.sh'
 ```
 
 ---
 
-## اسکریپت چه کار می‌کند؟
+## چک نهایی بعد از نصب
 
-## 1) وقتی Role = khrej
-
-- نصب ابزارهای لازم (`openssh-server`, `iproute2`, `iptables`)
-- بررسی/فعال‌سازی `tun` (`/dev/net/tun` + `modprobe tun`)
-- تنظیم `sshd_config`:
-  - `PermitTunnel yes`
-  - `AllowTcpForwarding yes`
-- تست و ری‌استارت سرویس SSH
-
-## 2) وقتی Role = iran
-
-- گرفتن اطلاعات تونل و پورت‌ها به‌صورت interactive
-- بررسی دسترسی SSH بدون پسورد به `khrej`
-- ساخت سرویس `systemd` برای نگه‌داشتن تونل با `ssh -w TUN:TUN -N`
-- اجرای setup بعد از بالا آمدن تونل:
-  - ست کردن IP/MTU روی دو طرف
-  - فعال‌سازی `net.ipv4.ip_forward=1` روی `iran`
-  - DNAT در `PREROUTING`
-  - `MASQUERADE` در `POSTROUTING` روی خروجی `tun`
-  - (اختیاری) باز کردن فایروال روی `khrej` برای پورت‌ها روی `tun`
-  - (اختیاری) MSS clamp برای مسیرهای MTU محدود
-- بعد از فعال‌سازی سرویس، به‌صورت خودکار سلامت تونل را چک می‌کند (وجود `tunX` روی هر دو سمت + تست ping best-effort)
-
----
-
-## نکات مهم
-
-- اگر اتصال‌های TCP (مثلاً TLS/WS) گیر می‌کنند:
-  - MTU پایین‌تر (مثلاً `1240`) انتخاب کن.
-  - MSS clamp را فعال کن.
-- روی بعضی سیستم‌ها backend فایروال `nft` است و دستور `iptables` از لایه سازگاری استفاده می‌کند.
-- اگر policy زنجیره‌های فایروال روی `DROP` باشد، قوانین اضافی ممکن است لازم شود (مثل allow برای `ESTABLISHED,RELATED`).
-
----
-
-## عیب‌یابی سریع
-
-### روی iran
+### روی ایران
 
 ```bash
 ip a show tun5
 systemctl status ssh-tun5-dnat.service --no-pager
 iptables -t nat -vnL PREROUTING
-iptables -vnL FORWARD
 ```
 
-### روی khrej
+### روی خارج
 
 ```bash
 ip a show tun5
-ss -lntup | grep 2096
+ss -lntup
 ```
+
+> اگر `tun5` نیست، عدد 5 را با `TUN ID` خودت عوض کن.
 
 ---
 
-## مسیر فایل‌های ساخته‌شده توسط اسکریپت
+## اگر مشکل داشتی این خروجی‌ها را بفرست
 
-- env:
-  - `/etc/ssh-tun-dnat/tunX.env`
-- setup script:
-  - `/usr/local/sbin/ssh-tun-dnat-setup.sh`
-- service:
-  - `/etc/systemd/system/ssh-tunX-dnat.service`
+### ایران
+
+```bash
+ip a
+systemctl status ssh-tun5-dnat.service --no-pager
+journalctl -u ssh-tun5-dnat.service -n 200 --no-pager
+iptables -t nat -vnL
+iptables -vnL FORWARD
+```
+
+### خارج
+
+```bash
+ip a
+ss -lntup
+cat /etc/ssh/sshd_config | sed -n '1,220p'
+```
+
+من با همین خروجی‌ها دقیق و قدم‌به‌قدم مشکل را پیدا می‌کنم.
