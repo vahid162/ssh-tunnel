@@ -508,43 +508,193 @@ EOS
   fi
 }
 
+
+collect_iran_config() {
+  HOST="$(ask 'khrej server IP/Domain' "${HOST:-khrej}")"
+  USER="$(ask 'SSH user on khrej' "${USER:-root}")"
+  SSH_PORT="$(ask 'SSH port on khrej' "${SSH_PORT:-22}")"
+  TUN_ID="$(ask 'TUN ID (e.g. 5)' "${TUN_ID:-5}")"
+
+  IP_LOCAL="$(ask 'Tunnel IP on iran' "${IP_LOCAL:-192.168.83.1}")"
+  IP_REMOTE="$(ask 'Tunnel IP on khrej' "${IP_REMOTE:-192.168.83.2}")"
+  MASK="$(ask 'Tunnel mask (CIDR)' "${MASK:-30}")"
+
+  MTU="$(ask 'MTU for tun (1240 is good if you have MTU issues)' "${MTU:-1240}")"
+
+  TCP_PORTS_STR="$(ask 'TCP ports to forward (1 or more: 2096 OR 443,8443 OR 20000-20010)' "${TCP_PORTS_STR:-2096}")"
+  UDP_PORTS_STR="$(ask 'UDP ports to forward (empty = none; supports same format)' "${UDP_PORTS_STR:-}")"
+
+  WAN_IF="${WAN_IF:-$(detect_wan_if || true)}"
+  WAN_IF="$(ask 'Internet input interface on iran (auto-detected)' "${WAN_IF:-eth0}")"
+
+  MSS_CLAMP="${MSS_CLAMP:-0}"
+  if ask_yn "Enable MSS clamp? (helps prevent TLS/WS stalls on low MTU paths)" "$( [[ "${MSS_CLAMP}" == "1" ]] && echo y || echo n )"; then
+    MSS_CLAMP=1
+  else
+    MSS_CLAMP=0
+  fi
+
+  REMOTE_FIREWALL="${REMOTE_FIREWALL:-0}"
+  if ask_yn "Also open INPUT on khrej for these ports on tun?" "$( [[ "${REMOTE_FIREWALL}" == "1" ]] && echo y || echo n )"; then
+    REMOTE_FIREWALL=1
+  else
+    REMOTE_FIREWALL=0
+  fi
+
+  ENABLE_REMOTE_IP_FORWARD="${ENABLE_REMOTE_IP_FORWARD:-0}"
+  if ask_yn "Also set net.ipv4.ip_forward=1 on khrej? (usually not required but harmless)" "$( [[ "${ENABLE_REMOTE_IP_FORWARD}" == "1" ]] && echo y || echo n )"; then
+    ENABLE_REMOTE_IP_FORWARD=1
+  else
+    ENABLE_REMOTE_IP_FORWARD=0
+  fi
+}
+
+pick_existing_envfile() {
+  local envdir="/etc/ssh-tun-dnat"
+  [[ -d "$envdir" ]] || return 1
+
+  mapfile -t IRAN_ENV_FILES < <(find "$envdir" -maxdepth 1 -type f -name 'tun*.env' | sort)
+  [[ "${#IRAN_ENV_FILES[@]}" -gt 0 ]] || return 1
+
+  echo "Existing tunnel profiles:"
+  local i
+  for i in "${!IRAN_ENV_FILES[@]}"; do
+    echo "  $((i+1))) ${IRAN_ENV_FILES[$i]}"
+  done
+
+  while true; do
+    local sel
+    sel="$(ask 'Select profile number to manage (or type n for new profile)' '1')"
+    if [[ "$sel" =~ ^[Nn]$ ]]; then
+      return 1
+    fi
+    if [[ "$sel" =~ ^[0-9]+$ ]] && (( sel >= 1 && sel <= ${#IRAN_ENV_FILES[@]} )); then
+      SELECTED_ENVFILE="${IRAN_ENV_FILES[$((sel-1))]}"
+      return 0
+    fi
+    warn "Invalid selection."
+  done
+}
+
+show_profile_summary() {
+  local envfile="$1"
+  [[ -f "$envfile" ]] || die "Env file not found: $envfile"
+  echo "---------------- CURRENT PROFILE ----------------"
+  cat "$envfile"
+  echo "------------------------------------------------"
+}
+
+manage_existing_iran_profile() {
+  local envfile="$1"
+  [[ -f "$envfile" ]] || die "Env file not found: $envfile"
+
+  # shellcheck disable=SC1090
+  source "$envfile"
+  local unit="ssh-tun${TUN_ID}-dnat.service"
+
+  while true; do
+    echo
+    echo "Manage existing profile: tun${TUN_ID}"
+    echo "  1) Show current config"
+    echo "  2) Restart service"
+    echo "  3) Stop service"
+    echo "  4) Start service"
+    echo "  5) Re-run setup (apply iptables/tun again)"
+    echo "  6) Edit and reconfigure this profile"
+    echo "  7) Remove this profile and service"
+    echo "  8) Exit"
+
+    local action
+    action="$(ask 'Choose action' '1')"
+    case "$action" in
+      1)
+        show_profile_summary "$envfile"
+        ;;
+      2)
+        systemctl daemon-reload || true
+        systemctl restart "$unit"
+        systemctl status "$unit" --no-pager || true
+        ;;
+      3)
+        systemctl stop "$unit"
+        systemctl status "$unit" --no-pager || true
+        ;;
+      4)
+        systemctl start "$unit"
+        systemctl status "$unit" --no-pager || true
+        ;;
+      5)
+        /usr/local/sbin/ssh-tun-dnat-setup.sh "$envfile"
+        ;;
+      6)
+        local old_tun_id="$TUN_ID"
+        local old_unit="$unit"
+        local old_envfile="$envfile"
+
+        log "Editing profile tun${TUN_ID} ..."
+        collect_iran_config
+
+        ensure_ssh_key_and_access
+        maybe_configure_remote_khrej_over_ssh
+
+        # Normalize port inputs
+        TCP_PORTS_STR="$(ports_to_array "$TCP_PORTS_STR" | paste -sd, - || true)"
+        UDP_PORTS_STR="$(ports_to_array "$UDP_PORTS_STR" | paste -sd, - || true)"
+
+        export HOST USER SSH_PORT TUN_ID IP_LOCAL IP_REMOTE MASK MTU WAN_IF
+        export TCP_PORTS_STR UDP_PORTS_STR MSS_CLAMP REMOTE_FIREWALL ENABLE_REMOTE_IP_FORWARD
+
+        create_local_setup_script
+        envfile="$(write_env)"
+        unit="ssh-tun${TUN_ID}-dnat.service"
+        create_systemd_service_iran "$envfile"
+
+        # If TUN ID changed, remove old service/env profile
+        if [[ "$old_unit" != "$unit" ]]; then
+          systemctl disable --now "$old_unit" 2>/dev/null || true
+          rm -f "/etc/systemd/system/$old_unit"
+          [[ "$old_envfile" != "$envfile" ]] && rm -f "$old_envfile"
+          ip link del "tun${old_tun_id}" 2>/dev/null || true
+          systemctl daemon-reload || true
+        fi
+
+        verify_tunnel_health
+        ;;
+      7)
+        if ask_yn "Are you sure you want to remove profile tun${TUN_ID} and its service?" "n"; then
+          systemctl disable --now "$unit" 2>/dev/null || true
+          rm -f "/etc/systemd/system/$unit"
+          systemctl daemon-reload || true
+          rm -f "$envfile"
+          ip link del "tun${TUN_ID}" 2>/dev/null || true
+          log "Removed profile tun${TUN_ID}."
+          break
+        fi
+        ;;
+      8)
+        break
+        ;;
+      *)
+        warn "Invalid action."
+        ;;
+    esac
+  done
+}
+
 setup_role_iran() {
   log "Role = iran (client)"
 
   pkg_install iproute2 iptables openssh-client
   ensure_tun
 
-  HOST="$(ask 'khrej server IP/Domain' 'khrej')"
-  USER="$(ask 'SSH user on khrej' 'root')"
-  SSH_PORT="$(ask 'SSH port on khrej' '22')"
-  TUN_ID="$(ask 'TUN ID (e.g. 5)' '5')"
-
-  IP_LOCAL="$(ask 'Tunnel IP on iran' '192.168.83.1')"
-  IP_REMOTE="$(ask 'Tunnel IP on khrej' '192.168.83.2')"
-  MASK="$(ask 'Tunnel mask (CIDR)' '30')"
-
-  MTU="$(ask 'MTU for tun (1240 is good if you have MTU issues)' '1240')"
-
-  TCP_PORTS_STR="$(ask 'TCP ports to forward (1 or more: 2096 OR 443,8443 OR 20000-20010)' '2096')"
-  UDP_PORTS_STR="$(ask 'UDP ports to forward (empty = none; supports same format)' '')"
-
-  WAN_IF="$(detect_wan_if || true)"
-  WAN_IF="$(ask 'Internet input interface on iran (auto-detected)' "${WAN_IF:-eth0}")"
-
-  MSS_CLAMP=0
-  if ask_yn "Enable MSS clamp? (helps prevent TLS/WS stalls on low MTU paths)" "y"; then
-    MSS_CLAMP=1
+  if pick_existing_envfile; then
+    if ask_yn "An existing profile was found. Manage it now?" "y"; then
+      manage_existing_iran_profile "$SELECTED_ENVFILE"
+      return 0
+    fi
   fi
 
-  REMOTE_FIREWALL=0
-  if ask_yn "Also open INPUT on khrej for these ports on tun?" "y"; then
-    REMOTE_FIREWALL=1
-  fi
-
-  ENABLE_REMOTE_IP_FORWARD=0
-  if ask_yn "Also set net.ipv4.ip_forward=1 on khrej? (usually not required but harmless)" "n"; then
-    ENABLE_REMOTE_IP_FORWARD=1
-  fi
+  collect_iran_config
 
   # Export for helper creation
   export HOST USER SSH_PORT TUN_ID IP_LOCAL IP_REMOTE MASK MTU WAN_IF

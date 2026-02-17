@@ -26,6 +26,27 @@ ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunne
 
 ---
 
+
+## مدیریت بعد از نصب (خیلی مهم)
+
+اگر یک‌بار نصب انجام شده، می‌تونی **همان اسکریپت** را دوباره اجرا کنی تا تنظیمات قبلی را مدیریت/تغییر بدهی:
+
+```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+وقتی پروفایل قبلی پیدا شود، منوی مدیریت می‌بینی و می‌توانی این کارها را انجام بدهی:
+
+- نمایش تنظیمات فعلی
+- Restart / Stop / Start سرویس
+- اجرای مجدد setup برای اعمال دوباره iptables/tun
+- ویرایش کامل تنظیمات (IP ها، پورت‌ها، MTU، MSS، فایروال و ...)
+- حذف پروفایل و سرویس
+
+> اگر در ویرایش، `TUN ID` را عوض کنی، سرویس/پروفایل قبلی خودکار جمع می‌شود و سرویس جدید ساخته می‌شود.
+
+---
+
 ## مقدارهای پیشنهادی برای مبتدی (روی ایران)
 
 - `TUN ID`: `5`
@@ -39,7 +60,7 @@ ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunne
 
 اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
 
----
+### روی خارج
 
 ## اگر لینک raw در دسترس نبود (خیلی نادر)
 
@@ -59,7 +80,7 @@ ssh root@<SERVER_IP> 'ROLE=iran  bash /root/ssh-tun-dnat.sh'
 ### روی ایران
 
 ```bash
-ip a show tun5
+ip a
 systemctl status ssh-tun5-dnat.service --no-pager
 iptables -t nat -vnL PREROUTING
 ```
