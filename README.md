@@ -24,8 +24,39 @@ ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunne
 
 در مرحله ایران، اسکریپت خودش سؤال‌ها را می‌پرسد (IP خارج، پورت SSH، TUN ID، پورت‌ها و ...).
 
----
+> ترتیب مهم: **اول سرور خارج، بعد سرور ایران**
 
+### 1) روی سرور خارج (Kharej) این را اجرا کن
+
+```bash
+ROLE=khrej bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+### 2) روی سرور ایران (Iran) این را اجرا کن
+
+```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+
+## تاثیر روی دسترسی‌های دیگر سرور (خیلی مهم)
+
+خلاصه: در حالت پیش‌فرض، این اسکریپت **دسترسی‌های دیگر شما را محدود نمی‌کند** و ruleهای موجود را flush نمی‌کند.
+
+رفتار واقعی اسکریپت:
+
+- `iptables` را پاک (`flush`) نمی‌کند و policyها را تغییر نمی‌دهد؛ فقط ruleهای لازم این تانل را به‌صورت append اضافه می‌کند.
+- ruleها را idempotent اضافه می‌کند (اول `-C` چک می‌کند، بعد `-A`) تا rule تکراری نسازد.
+- در `sshd_config` فقط `PermitTunnel yes` و `AllowTcpForwarding yes` را تنظیم می‌کند که حالت **فعال‌سازی قابلیت** است، نه محدودسازی.
+- تنها گزینه‌ای که می‌تواند روی بقیه لاگین‌ها اثر بگذارد، سؤال `Disable PasswordAuthentication` است که پیش‌فرضش `n` است. اگر `n` بزنید، پسورد لاگین برای دیگران تغییر نمی‌کند.
+
+### برای اینکه هیچ دسترسی دیگری محدود نشود، این‌ها را رعایت کن
+
+1. در سؤال `Disable PasswordAuthentication ...` حتماً `n` بزن.
+2. `TUN ID` اختصاصی انتخاب کن که با تانل‌های دیگر یکی نباشد.
+3. پورت‌هایی را که DNAT می‌کنی با سرویس/تانل‌های دیگر overlap نده.
+
+---
 
 ## مدیریت بعد از نصب (خیلی مهم)
 

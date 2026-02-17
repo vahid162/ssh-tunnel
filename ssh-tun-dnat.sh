@@ -107,7 +107,7 @@ EOF
   fi
 
   # Optional hardening (won't force unless user says yes)
-  if ask_yn "Disable PasswordAuthentication on this server? (recommended if SSH key access works)" "n"; then
+  if ask_yn "Disable PasswordAuthentication globally on this server? (may affect other users/tunnels; recommended only if SSH keys are fully set)" "n"; then
     if grep -qiE '^\s*PasswordAuthentication\s+' "$cfg"; then
       sed -i -E 's/^\s*PasswordAuthentication\s+.*/PasswordAuthentication no/I' "$cfg"
     else
