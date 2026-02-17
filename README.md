@@ -82,6 +82,53 @@ iptables -t nat -vnL PREROUTING
 
 ---
 
+## اگر سرور خارج عوض شد (مهاجرت به Kharej جدید)
+
+بله، این سناریو هم کامل قابل انجام است؛ فقط ترتیب را دقیق رعایت کن تا قطعی/تداخل نداشته باشی.
+
+### ترتیب درست (قدم‌به‌قدم)
+
+1. روی **سرور خارج جدید** اول `ROLE=khrej` را اجرا کن تا `PermitTunnel` و پیش‌نیازها آماده شود.
+2. روی **سرور ایران فعلی** همان اسکریپت `ROLE=iran` را دوباره اجرا کن.
+3. از منوی مدیریت، پروفایل فعلی را انتخاب کن و گزینه **`Edit and reconfigure this profile`** را بزن.
+4. فقط مقادیر مربوط به خارج را تغییر بده (مخصوصاً `HOST` و در صورت نیاز `SSH_PORT`/`USER`) و بقیه را مثل قبل نگه دار.
+5. بعد از بالا آمدن سرویس جدید، اگر همه‌چیز OK بود، سرور خارج قبلی را از مدار خارج کن.
+
+### دستورهای آماده (کپی/پیست)
+
+روی **خارج جدید**:
+
+```bash
+ROLE=khrej bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+روی **ایران فعلی** (برای تغییر مقصد خارج):
+
+```bash
+ROLE=iran bash <(curl -fsSL https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh)
+```
+
+### چک سریع بعد از تغییر خارج
+
+روی ایران:
+
+```bash
+systemctl status ssh-tun5-dnat.service --no-pager
+journalctl -u ssh-tun5-dnat.service -n 100 --no-pager
+ip a show tun5
+```
+
+روی خارج جدید:
+
+```bash
+ip a show tun5
+cat /etc/ssh/sshd_config | sed -n '1,220p' | grep -E 'PermitTunnel|AllowTcpForwarding'
+```
+
+> اگر `TUN ID` شما 5 نیست، در دستورها عدد 5 را با `TUN ID` خودت جایگزین کن.
+
+---
+
 ## مقدارهای پیشنهادی برای مبتدی (روی ایران)
 
 - `TUN ID`: `5`
@@ -95,7 +142,7 @@ iptables -t nat -vnL PREROUTING
 
 اگر مطمئن نیستی، پیش‌فرض‌ها را تغییر نده.
 
-## اگر لینک raw در دسترس نبود (خیلی نادر)
+---
 
 ## اگر لینک raw در دسترس نبود (خیلی نادر)
 
