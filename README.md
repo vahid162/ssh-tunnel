@@ -21,10 +21,20 @@
 
 > اسکریپت باید با `root` اجرا شود.
 
-### روش مستقیم از GitHub
+### روش مستقیم از GitHub (بعد از تعیین URL درست)
+
+> **مهم:** در حال حاضر ممکن است URL ثابت 404 بدهد اگر ریپو private باشد یا نام owner/repo اشتباه باشد.
+> قبل از اجرا، آدرس raw واقعی را با دستور زیر پیدا/تست کن.
 
 ```bash
-bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
+# 1) URL را با owner/repo/branch واقعی خودت بساز
+RAW_URL="https://raw.githubusercontent.com/<OWNER>/<REPO>/<BRANCH>/ssh-tun-dnat.sh"
+
+# 2) باید 200 برگرداند
+curl -I "$RAW_URL" | head -n 1
+
+# 3) بعد اجرا کن
+bash <(curl -fsSL "$RAW_URL")
 ```
 
 یک بار روی `khrej` اجرا کن (Role = `khrej`) و یک بار روی `iran` (Role = `iran`).
@@ -32,8 +42,18 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ss
 ### اجرای بدون سؤال Role
 
 ```bash
-ROLE=khrej bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
-ROLE=iran  bash <(curl -fsSL "https://raw.githubusercontent.com/vahid162/ssh-tunnel/main/ssh-tun-dnat.sh")
+RAW_URL="https://raw.githubusercontent.com/<OWNER>/<REPO>/<BRANCH>/ssh-tun-dnat.sh"
+ROLE=khrej bash <(curl -fsSL "$RAW_URL")
+ROLE=iran  bash <(curl -fsSL "$RAW_URL")
+```
+
+### روش جایگزین (بدون raw URL)
+
+اگر ریپو private است یا raw در دسترس نیست، روی سرور مقصد فایل را مستقیم کپی و اجرا کن:
+
+```bash
+scp ssh-tun-dnat.sh root@<SERVER_IP>:/root/
+ssh root@<SERVER_IP> 'bash /root/ssh-tun-dnat.sh'
 ```
 
 ---
