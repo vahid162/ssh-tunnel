@@ -13,7 +13,7 @@ warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 die()  { echo -e "${RED}[-]${NC} $*" >&2; exit 1; }
 
 require_root() {
-  [[ "${EUID:-$(id -u)}" -eq 0 ]] || die "این اسکریپت باید با root اجرا شود."
+  [[ "${EUID:-$(id -u)}" -eq 0 ]] || die "This script must be run as root."
 }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
@@ -29,7 +29,7 @@ pkg_install() {
   elif have_cmd yum; then
     yum install -y "${pkgs[@]}"
   else
-    die "Package manager پیدا نشد (apt/dnf/yum). دستی نصب کن: ${pkgs[*]}"
+    die "Package manager not found (apt/dnf/yum). Install manually: ${pkgs[*]}"
   fi
 }
 
@@ -58,14 +58,14 @@ ask_yn() {
 ensure_tun() {
   mkdir -p /dev/net
   if [[ ! -c /dev/net/tun ]]; then
-    warn "/dev/net/tun نبود؛ تلاش برای ساخت..."
+    warn "/dev/net/tun is missing; trying to create it..."
     mknod /dev/net/tun c 10 200 || true
     chmod 666 /dev/net/tun || true
   fi
   modprobe tun || true
   mkdir -p /etc/modules-load.d
   echo "tun" > /etc/modules-load.d/tun.conf
-  [[ -c /dev/net/tun ]] || die "/dev/net/tun هنوز موجود نیست. کرنل/مجازی‌ساز را چک کن."
+  [[ -c /dev/net/tun ]] || die "/dev/net/tun is still missing. Check kernel/virtualizer settings."
 }
 
 sshd_restart() {
@@ -78,13 +78,13 @@ sshd_restart() {
 
 sshd_test() {
   if have_cmd sshd; then
-    sshd -t || die "sshd_config مشکل دارد. خروجی بالا را ببین."
+    sshd -t || die "sshd_config has errors. See output above."
   fi
 }
 
 ensure_sshd_tunnel_enabled() {
   local cfg="/etc/ssh/sshd_config"
-  [[ -f "$cfg" ]] || die "فایل $cfg پیدا نشد."
+  [[ -f "$cfg" ]] || die "File $cfg not found."
 
   cp -a "$cfg" "${cfg}.bak.$(date +%F_%H%M%S)"
 
@@ -107,7 +107,7 @@ EOF
   fi
 
   # Optional hardening (won't force unless user says yes)
-  if ask_yn "روی این سرور PasswordAuthentication رو خاموش کنم؟ (پیشنهادی اگر کلید داری)" "n"; then
+  if ask_yn "Disable PasswordAuthentication on this server? (recommended if SSH key access works)" "n"; then
     if grep -qiE '^\s*PasswordAuthentication\s+' "$cfg"; then
       sed -i -E 's/^\s*PasswordAuthentication\s+.*/PasswordAuthentication no/I' "$cfg"
     else
@@ -122,7 +122,7 @@ EOF
 
   sshd_test
   sshd_restart
-  log "sshd تنظیم شد (PermitTunnel/AllowTcpForwarding)."
+  log "sshd configured (PermitTunnel/AllowTcpForwarding)."
 }
 
 detect_wan_if() {
@@ -131,8 +131,30 @@ detect_wan_if() {
 }
 
 ports_to_array() {
-  # input: "2096,2087  443"
-  echo "$1" | tr ', ' '\n' | awk 'NF{print $1}' | grep -E '^[0-9]+$' || true
+  # Supports: single port, comma/space list, and ranges (e.g. 443,8443,20000-20010)
+  local input="${1//,/ }"
+  awk '
+    function add_port(p) {
+      if (p >= 1 && p <= 65535 && !seen[p]++) print p
+    }
+    {
+      for (i = 1; i <= NF; i++) {
+        token = $i
+        if (token ~ /^[0-9]+$/) {
+          add_port(token + 0)
+        } else if (token ~ /^[0-9]+-[0-9]+$/) {
+          split(token, a, "-")
+          s = a[1] + 0
+          e = a[2] + 0
+          if (s <= e) {
+            for (p = s; p <= e; p++) add_port(p)
+          } else {
+            for (p = e; p <= s; p++) add_port(p)
+          }
+        }
+      }
+    }
+  ' <<<"$input" | sort -n
 }
 
 write_env() {
@@ -210,7 +232,7 @@ remote_var() {
 }
 
 main() {
-  wait_tun || { echo "tun${TUN_ID} بالا نیامد."; exit 1; }
+  wait_tun || { echo "tun${TUN_ID} did not come up."; exit 1; }
 
   ip addr add "${IP_LOCAL}/${MASK}" dev "tun${TUN_ID}" 2>/dev/null || true
   ip link set "tun${TUN_ID}" up
@@ -237,7 +259,31 @@ fi
 
 if [[ "$REMOTE_FIREWALL" == "1" ]]; then
   # Allow service ports on tun interface (INPUT)
-  to_arr() { echo "$1" | tr ', ' '\n' | awk 'NF{print $1}' | grep -E '^[0-9]+$' || true; }
+  to_arr() {
+    local input="${1//,/ }"
+    awk '
+      function add_port(p) {
+        if (p >= 1 && p <= 65535 && !seen[p]++) print p
+      }
+      {
+        for (i = 1; i <= NF; i++) {
+          token = $i
+          if (token ~ /^[0-9]+$/) {
+            add_port(token + 0)
+          } else if (token ~ /^[0-9]+-[0-9]+$/) {
+            split(token, a, "-")
+            s = a[1] + 0
+            e = a[2] + 0
+            if (s <= e) {
+              for (p = s; p <= e; p++) add_port(p)
+            } else {
+              for (p = e; p <= s; p++) add_port(p)
+            }
+          }
+        }
+      }
+    ' <<<"$input" | sort -n || true
+  }
   for p in $(to_arr "$TCP_PORTS_STR"); do
     iptables -C INPUT -i "tun${TUN_ID}" -p tcp --dport "$p" -j ACCEPT 2>/dev/null || \
     iptables -A INPUT -i "tun${TUN_ID}" -p tcp --dport "$p" -j ACCEPT
@@ -250,7 +296,31 @@ fi
 RS
 
   # DNAT on iran: WAN -> IP_REMOTE (over tun)
-  to_arr() { echo "$1" | tr ', ' '\n' | awk 'NF{print $1}' | grep -E '^[0-9]+$' || true; }
+  to_arr() {
+    local input="${1//,/ }"
+    awk '
+      function add_port(p) {
+        if (p >= 1 && p <= 65535 && !seen[p]++) print p
+      }
+      {
+        for (i = 1; i <= NF; i++) {
+          token = $i
+          if (token ~ /^[0-9]+$/) {
+            add_port(token + 0)
+          } else if (token ~ /^[0-9]+-[0-9]+$/) {
+            split(token, a, "-")
+            s = a[1] + 0
+            e = a[2] + 0
+            if (s <= e) {
+              for (p = s; p <= e; p++) add_port(p)
+            } else {
+              for (p = e; p <= s; p++) add_port(p)
+            }
+          }
+        }
+      }
+    ' <<<"$input" | sort -n || true
+  }
 
   for p in $(to_arr "$TCP_PORTS"); do
     iptables_add nat PREROUTING -i "$WAN_IF" -p tcp --dport "$p" -j DNAT --to-destination "${IP_REMOTE}"
@@ -325,7 +395,7 @@ EOF
 
 
 verify_tunnel_health() {
-  log "بررسی سلامت تونل tun${TUN_ID} ..."
+  log "Checking tunnel health for tun${TUN_ID} ..."
 
   local ok_local=0 ok_remote=0
   for _ in $(seq 1 20); do
@@ -335,7 +405,7 @@ verify_tunnel_health() {
     fi
     sleep 1
   done
-  [[ "$ok_local" -eq 1 ]] || die "tun${TUN_ID} روی iran بالا نیامد. لاگ سرویس را ببین: journalctl -u ssh-tun${TUN_ID}-dnat.service -n 100 --no-pager"
+  [[ "$ok_local" -eq 1 ]] || die "tun${TUN_ID} did not come up on iran. Check service logs: journalctl -u ssh-tun${TUN_ID}-dnat.service -n 100 --no-pager"
 
   for _ in $(seq 1 20); do
     if ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "ip link show tun${TUN_ID} >/dev/null 2>&1"; then
@@ -344,12 +414,12 @@ verify_tunnel_health() {
     fi
     sleep 1
   done
-  [[ "$ok_remote" -eq 1 ]] || die "tun${TUN_ID} روی khrej بالا نیامد. وضعیت sshd/PermitTunnel را بررسی کن."
+  [[ "$ok_remote" -eq 1 ]] || die "tun${TUN_ID} did not come up on khrej. Check sshd/PermitTunnel settings."
 
   if ping -c 2 -W 2 "$IP_REMOTE" >/dev/null 2>&1; then
-    log "Ping تونل به ${IP_REMOTE} موفق بود."
+    log "Tunnel ping to ${IP_REMOTE} succeeded."
   else
-    warn "Ping تونل به ${IP_REMOTE} ناموفق بود. ممکن است ICMP بسته باشد؛ وضعیت را با این‌ها چک کن:"
+    warn "Tunnel ping to ${IP_REMOTE} failed. ICMP may be blocked; check with:"
     warn "ip a show tun${TUN_ID} && ssh -p ${SSH_PORT} ${USER}@${HOST} 'ip a show tun${TUN_ID}'"
   fi
 }
@@ -359,14 +429,14 @@ setup_role_khrej() {
   pkg_install openssh-server iproute2 iptables
   ensure_tun
   ensure_sshd_tunnel_enabled
-  log "khrej آماده است."
+  log "khrej is ready."
 }
 
 ensure_ssh_key_and_access() {
   pkg_install openssh-client
 
   if [[ ! -f /root/.ssh/id_ed25519 && ! -f /root/.ssh/id_rsa ]]; then
-    warn "کلید SSH وجود ندارد؛ می‌سازم..."
+    warn "No SSH key found; generating one..."
     ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
   fi
 
@@ -376,21 +446,21 @@ ensure_ssh_key_and_access() {
     return 0
   fi
 
-  warn "ورود بدون پسورد هنوز فعال نیست. تلاش برای ssh-copy-id (ممکن است پسورد بخواهد)..."
+  warn "Passwordless login is not enabled yet. Trying ssh-copy-id (may ask for password)..."
   pkg_install openssh-client
   if have_cmd ssh-copy-id; then
-    ssh-copy-id -p "$SSH_PORT" "${USER}@${HOST}" || die "ssh-copy-id ناموفق بود. دستی کلید را اضافه کن."
+    ssh-copy-id -p "$SSH_PORT" "${USER}@${HOST}" || die "ssh-copy-id failed. Add the key manually."
   else
-    die "ssh-copy-id نصب نیست. openssh-client را بررسی کن."
+    die "ssh-copy-id is not installed. Check openssh-client."
   fi
 
   ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "echo ok" >/dev/null 2>&1 \
-    || die "بعد از ssh-copy-id هم BatchMode کار نکرد. تنظیمات sshd روی khrej را چک کن."
+    || die "BatchMode still failed after ssh-copy-id. Check sshd settings on khrej."
   log "SSH key access configured."
 }
 
 maybe_configure_remote_khrej_over_ssh() {
-  if ask_yn "آیا همین الان khrej را هم از راه SSH کانفیگ کنم؟ (PermitTunnel + iptables ابزارها)" "y"; then
+  if ask_yn "Configure khrej over SSH now as well? (PermitTunnel + iptables tools)" "y"; then
     log "Configuring khrej over SSH..."
     ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" "bash -s" <<'EOS'
 set -euo pipefail
@@ -434,7 +504,7 @@ echo "remote-ok"
 EOS
     log "khrej configured via SSH."
   else
-    warn "پس یادت باشه روی khrej هم Role=khrej اجرا بشه یا دستی PermitTunnel فعال باشه."
+    warn "Remember to run Role=khrej on khrej too, or enable PermitTunnel manually."
   fi
 }
 
@@ -444,35 +514,35 @@ setup_role_iran() {
   pkg_install iproute2 iptables openssh-client
   ensure_tun
 
-  HOST="$(ask 'IP/Domain سرور khrej' 'khrej')"
-  USER="$(ask 'SSH user روی khrej' 'root')"
-  SSH_PORT="$(ask 'SSH port روی khrej' '22')"
-  TUN_ID="$(ask 'TUN ID (مثلاً 5)' '5')"
+  HOST="$(ask 'khrej server IP/Domain' 'khrej')"
+  USER="$(ask 'SSH user on khrej' 'root')"
+  SSH_PORT="$(ask 'SSH port on khrej' '22')"
+  TUN_ID="$(ask 'TUN ID (e.g. 5)' '5')"
 
-  IP_LOCAL="$(ask 'IP تونل روی iran' '192.168.83.1')"
-  IP_REMOTE="$(ask 'IP تونل روی khrej' '192.168.83.2')"
-  MASK="$(ask 'Mask (CIDR) برای تونل' '30')"
+  IP_LOCAL="$(ask 'Tunnel IP on iran' '192.168.83.1')"
+  IP_REMOTE="$(ask 'Tunnel IP on khrej' '192.168.83.2')"
+  MASK="$(ask 'Tunnel mask (CIDR)' '30')"
 
-  MTU="$(ask 'MTU برای tun (اگر مشکل MTU داشتی 1240 خوبه)' '1240')"
+  MTU="$(ask 'MTU for tun (1240 is good if you have MTU issues)' '1240')"
 
-  TCP_PORTS_STR="$(ask 'TCP ports برای فوروارد (comma-separated)' '2096')"
-  UDP_PORTS_STR="$(ask 'UDP ports برای فوروارد (خالی=هیچ)' '')"
+  TCP_PORTS_STR="$(ask 'TCP ports to forward (1 or more: 2096 OR 443,8443 OR 20000-20010)' '2096')"
+  UDP_PORTS_STR="$(ask 'UDP ports to forward (empty = none; supports same format)' '')"
 
   WAN_IF="$(detect_wan_if || true)"
-  WAN_IF="$(ask 'اینترفیس ورودی اینترنت روی iran (auto-detect شده)' "${WAN_IF:-eth0}")"
+  WAN_IF="$(ask 'Internet input interface on iran (auto-detected)' "${WAN_IF:-eth0}")"
 
   MSS_CLAMP=0
-  if ask_yn "MSS clamp فعال شود؟ (برای جلوگیری از گیر کردن TLS/WS با MTU پایین)" "y"; then
+  if ask_yn "Enable MSS clamp? (helps prevent TLS/WS stalls on low MTU paths)" "y"; then
     MSS_CLAMP=1
   fi
 
   REMOTE_FIREWALL=0
-  if ask_yn "روی khrej هم اجازه‌ی INPUT برای همین پورت‌ها روی tun باز کنم؟" "y"; then
+  if ask_yn "Also open INPUT on khrej for these ports on tun?" "y"; then
     REMOTE_FIREWALL=1
   fi
 
   ENABLE_REMOTE_IP_FORWARD=0
-  if ask_yn "روی khrej هم net.ipv4.ip_forward=1 ست شود؟ (معمولاً لازم نیست ولی ضرری ندارد)" "n"; then
+  if ask_yn "Also set net.ipv4.ip_forward=1 on khrej? (usually not required but harmless)" "n"; then
     ENABLE_REMOTE_IP_FORWARD=1
   fi
 
@@ -494,7 +564,7 @@ setup_role_iran() {
   create_systemd_service_iran "$envfile"
   verify_tunnel_health
 
-  log "تمام ✅"
+  log "Done ✅"
   echo "-------------------------------------------------"
   echo "Check:"
   echo "  ip a show tun${TUN_ID}"
@@ -510,13 +580,13 @@ main() {
 
   ROLE="${ROLE:-}"
   if [[ -z "$ROLE" ]]; then
-    ROLE="$(ask 'این اسکریپت روی کدام سرور اجرا می‌شود؟ (iran/khrej)' 'iran')"
+    ROLE="$(ask 'Which server is this script running on? (iran/khrej)' 'iran')"
   fi
 
   case "$ROLE" in
     khrej) setup_role_khrej ;;
     iran)  setup_role_iran  ;;
-    *) die "ROLE باید iran یا khrej باشد." ;;
+    *) die "ROLE must be iran or khrej." ;;
   esac
 }
 
